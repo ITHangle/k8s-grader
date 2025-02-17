@@ -5,10 +5,12 @@ from tests.helper.k8s_client_helper import configure_k8s_client
 from tests.helper.kubectrl_helper import build_kube_config, run_kubectl_command
 
 
-class TestCheck:
+class TestCheckConfigMap:
     def test_001_check_configmap_client(self, json_input):
         k8s_client = configure_k8s_client(json_input)
-        configmap_name = "config"
+
+        # 获取 ConfigMap
+        configmap_name = "special-configmap"
         namespace = json_input["namespace"]
 
         try:
@@ -18,14 +20,15 @@ class TestCheck:
         except Exception as e:
             assert False, f"Failed to get ConfigMap '{configmap_name}': {str(e)}"
 
-        # 验证ConfigMap的内容
+        # 验证 ConfigMap 的内容
         assert configmap.api_version == "v1", "Incorrect apiVersion."
         assert configmap.kind == "ConfigMap", "Incorrect kind."
         assert configmap.metadata.name == configmap_name, "Incorrect metadata.name."
         assert "special" in configmap.data, "Missing key 'special' in data."
-        assert "var3=val3" in configmap.data["special"], "Incorrect value for 'var3'."
-        assert "var4=val4" in configmap.data["special"], "Incorrect value for 'var4'."
-        logging.info(f"ConfigMap '{configmap_name}' has the correct content.")
+        assert (
+            configmap.data["special"] == json_input["value1"]
+        ), "Incorrect value for 'special'."
+        logging.info("ConfigMap '%s' has the correct content.", configmap_name)
 
     def test_002_check_configmap_kubectl(self, json_input):
         logging.debug("Starting test_002_check_configmap_kubectl")
@@ -33,24 +36,28 @@ class TestCheck:
             json_input["cert_file"], json_input["key_file"], json_input["host"]
         )
 
-        command = f"kubectl get configmap config -n {json_input['namespace']} -o json"
+        namespace = json_input["namespace"]
+        configmap_name = "special-configmap"
+
+        # 使用 kubectl 获取 ConfigMap
+        command = f"kubectl get configmap {configmap_name} -n {namespace} -o json"
         result = run_kubectl_command(kube_config, command)
+        logging.debug("Command result: %s", result)
+
+        if "Error from server" in result:
+            assert False, f"Failed to get ConfigMap '{configmap_name}': {result}"
+
+        # 解析 kubectl 输出的 JSON 内容
         configmap = json.loads(result)
 
-        # 验证ConfigMap的内容
+        # 验证 ConfigMap 的内容
         assert configmap["apiVersion"] == "v1", "Incorrect apiVersion."
         assert configmap["kind"] == "ConfigMap", "Incorrect kind."
-        assert configmap["metadata"]["name"] == "config", "Incorrect metadata.name."
+        assert (
+            configmap["metadata"]["name"] == configmap_name
+        ), "Incorrect metadata.name."
         assert "special" in configmap["data"], "Missing key 'special' in data."
         assert (
-            "var3=val3" in configmap["data"]["special"]
-        ), "Incorrect value for 'var3'."
-        assert (
-            "var4=val4" in configmap["data"]["special"]
-        ), "Incorrect value for 'var4'."
-        logging.info(f"ConfigMap 'config' has the correct content.")
-
-
-# 运行测试
-if __name__ == "__main__":
-    pytest.main()
+            configmap["data"]["special"] == json_input["value1"]
+        ), "Incorrect value for 'special'."
+        logging.info("ConfigMap '%s' has the correct content.", configmap_name)
