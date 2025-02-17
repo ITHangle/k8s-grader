@@ -1,1 +1,0 @@
-Create a Pod named "nginx" using the "nginx" image. Expose the Pod's port 80 to network traffic within the default namespace.

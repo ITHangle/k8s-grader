@@ -1,1 +1,0 @@
-In the '{{namespace}}' namespace, Create and display a configmap giving the key 'special'， special value {{value1}}

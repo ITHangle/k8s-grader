@@ -1,1 +1,0 @@
-Create a secret called mysecret with the values password=mypass

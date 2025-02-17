@@ -1,1 +1,0 @@
-Create a namespace named limitrange with a LimitRange that limits pod memory to a max of 500Mi and min of 100Mi

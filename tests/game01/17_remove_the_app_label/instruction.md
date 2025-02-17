@@ -1,1 +1,0 @@
-In the '{{namespace}}' namespace, remove the 'app' label from all pods.
