@@ -1,0 +1,1 @@
+Please provide the Kubernetes confidential information and host address.
