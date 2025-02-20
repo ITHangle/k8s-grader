@@ -5,6 +5,9 @@ SSH_HOST=$(aws cloudformation describe-stacks --stack-name minikube-stack --quer
 SSH_KEY="labsuser.pem"
 SSH_USER="ec2-user"
 
-ssh -o "StrictHostKeyChecking no" -i $SSH_KEY $SSH_USER@$SSH_HOST "minikube status"
+# Define the command to be executed over SSH
+SSH_COMMAND="kubectl create namespace eloquentdavinci4cywong"
 
+# Execute the SSH command
+ssh -o "StrictHostKeyChecking no" -i $SSH_KEY $SSH_USER@$SSH_HOST "$SSH_COMMAND"
 

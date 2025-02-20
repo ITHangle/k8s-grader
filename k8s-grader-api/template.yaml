@@ -4,6 +4,15 @@ Description: >
   k8s-grader-api
   Sample SAM Template for k8s-grader-api
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Parameters:
+  SecretHash:
+    Type: String
+    Description: "Secret hash for secure operations"
+    Default: "hyKOuny4vy94RUiYe3pB6CCwtaJeW6B_fOtqbK1PXrQ="
+  StageName:
+    Type: String
+    Description: "Stage name for the API"
+    Default: "Prod"
 Globals:
   Function:
     Timeout: 29
@@ -14,14 +23,20 @@ Globals:
       - x86_64
   Api:
     TracingEnabled: true
-    Cors:
-      AllowMethods: "'*'"
-      AllowHeaders: "'*'"
-      AllowOrigin: "'*'"
-      
 Resources:
   TestResultBucket:
     Type: AWS::S3::Bucket
+
+  ApiKeyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
 
   AccountTable:
     Type: AWS::DynamoDB::Table
@@ -48,7 +63,6 @@ Resources:
   GameTaskTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      # TableName: GameTaskTable
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: "email"
@@ -64,7 +78,6 @@ Resources:
   SessionTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      # TableName: SessionTable
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: "email"
@@ -76,6 +89,95 @@ Resources:
           KeyType: "HASH"
         - AttributeName: "game"
           KeyType: "RANGE"
+
+  TestRecordTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+        - AttributeName: "gameTime"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
+        - AttributeName: "gameTime"
+          KeyType: "RANGE"
+  
+  NpcTaskTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+        - AttributeName: "game"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
+        - AttributeName: "game"
+          KeyType: "RANGE"
+
+  NpcLockTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+        - AttributeName: "gameNpc"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
+        - AttributeName: "gameNpc"
+          KeyType: "RANGE"
+      TimeToLiveSpecification:
+        AttributeName: "ttl"
+        Enabled: true
+  
+  NpcBackgroundTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "name"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "name"
+          KeyType: "HASH"
+
+
+# Handle CORS https://github.com/aws/serverless-application-model/issues/1786
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      StageName: !Ref StageName
+      Auth:
+        ApiKeyRequired: true
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'*'"
+        AllowMethods: "'*'"
+        MaxAge: "'600'"
+        
+  APIUsagePlan:
+    Type: 'AWS::ApiGateway::UsagePlan'
+    Properties:
+      ApiStages:
+        - ApiId: !Ref ApiGatewayApi
+          Stage: !Ref ApiGatewayApi.Stage
+      Description: To usage plan and api key in REST API.
+      Quota:
+        Limit: 2880
+        Period: DAY
+      Throttle:
+        BurstLimit: 60
+        RateLimit: 60
+      UsagePlanName: !Sub "${AWS::StackName}-usage-plan"
 
   LibLayer:
     Type: AWS::Serverless::LayerVersion
@@ -101,7 +203,7 @@ Resources:
       BuildMethod: python3.11
 
   GameTaskFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function 
     Properties:
       CodeUri: game_task/
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
@@ -113,16 +215,34 @@ Resources:
           AccountTable: !Ref AccountTable
           SessionTable: !Ref SessionTable
           GameTaskTable: !Ref GameTaskTable
+          ApiKeyTable: !Ref ApiKeyTable
           TestResultBucket: !Ref TestResultBucket
+          SecretHash: !Ref SecretHash
+          TestRecordTable: !Ref TestRecordTable
+          NpcTaskTable: !Ref NpcTaskTable
+          NpcLockTable: !Ref NpcLockTable
+          NpcBackgroundTable: !Ref NpcBackgroundTable
       Events:
         GameTask:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api 
           Properties:
             Path: /game-task
             Method: get
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: true
+        ProxyApiCors:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /game-task
+            Method: options
+            Auth:
+              ApiKeyRequired: false
 
   GraderFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function 
     Properties:
       CodeUri: grader/
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
@@ -134,16 +254,34 @@ Resources:
           AccountTable: !Ref AccountTable
           SessionTable: !Ref SessionTable
           GameTaskTable: !Ref GameTaskTable
+          ApiKeyTable: !Ref ApiKeyTable
           TestResultBucket: !Ref TestResultBucket
+          SecretHash: !Ref SecretHash
+          TestRecordTable: !Ref TestRecordTable
+          NpcTaskTable: !Ref NpcTaskTable
+          NpcLockTable: !Ref NpcLockTable
+          NpcBackgroundTable: !Ref NpcBackgroundTable
       Events:
         GameTask:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api 
           Properties:
             Path: /grader
             Method: get
-
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: true
+        ProxyApiCors:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /grader
+            Method: options
+            Auth:
+              ApiKeyRequired: false
+              
   SaveK8sAccountFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function 
     Properties:
       CodeUri: save-k8s-account/
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
@@ -155,31 +293,109 @@ Resources:
           AccountTable: !Ref AccountTable
           SessionTable: !Ref SessionTable
           GameTaskTable: !Ref GameTaskTable
+          ApiKeyTable: !Ref ApiKeyTable
+          SecretHash: !Ref SecretHash
+          TestRecordTable: !Ref TestRecordTable
+          NpcTaskTable: !Ref NpcTaskTable
+          NpcLockTable: !Ref NpcLockTable
+          NpcBackgroundTable: !Ref NpcBackgroundTable
       Events:
-        GameTaskGet:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+         SaveK8sAccountGet:
+          Type: Api 
           Properties:
             Path: /save-k8s-account
             Method: get
-        GameTaskGetPost:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: false
+         SaveK8sAccountPost:
+          Type: Api 
           Properties:
             Path: /save-k8s-account
             Method: post
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: true
+
+  KeygenFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: keygen/
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          SecretHash: !Ref SecretHash          
+          StageName: !Ref StageName
+          ApiGateWayName: !Sub "${AWS::StackName}-api"
+          UsagePlanName: !Sub "${AWS::StackName}-usage-plan"
+          AccountTable: !Ref AccountTable
+          SessionTable: !Ref SessionTable
+          GameTaskTable: !Ref GameTaskTable
+          ApiKeyTable: !Ref ApiKeyTable
+          TestRecordTable: !Ref TestRecordTable
+          NpcTaskTable: !Ref NpcTaskTable
+          NpcLockTable: !Ref NpcLockTable
+          NpcBackgroundTable: !Ref NpcBackgroundTable
+      Events:
+        KeygenTask:
+          Type: Api 
+          Properties:
+            Path: /keygen
+            Method: get
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: false
+
+  LoadNpcBackgroundFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: load_npc_background/
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          SecretHash: !Ref SecretHash                 
+          AccountTable: !Ref AccountTable
+          SessionTable: !Ref SessionTable
+          GameTaskTable: !Ref GameTaskTable
+          ApiKeyTable: !Ref ApiKeyTable
+          TestRecordTable: !Ref TestRecordTable
+          NpcTaskTable: !Ref NpcTaskTable
+          NpcLockTable: !Ref NpcLockTable
+          NpcBackgroundTable: !Ref NpcBackgroundTable
+      Events:
+        KeygenTask:
+          Type: Api 
+          Properties:
+            Path: /load_npc_background
+            Method: get
+            RestApiId:
+              Ref: ApiGatewayApi
+            Auth:
+              ApiKeyRequired: false
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  GameApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/game-task/"
-  SaveK8sAccountApi:
-    Description: "API Gateway endpoint URL for Prod stage for Save K8s Account function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/save-k8s-account/"
-  GraderApi:
-    Description: "API Gateway endpoint URL for Prod stage for Grader function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/grader/?email=xxxx"
+  BaseUrl:
+    Description: "Base Url for the game"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/"
+  SaveK8sAccountUrl:
+    Description: "Save K8s Account URL."
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/save-k8s-account/" 
+  KeygenApi:
+    Description: "Endpoint URL for Keygen function"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/keygen/?secret=${SecretHash}&email="
+  LoadNpcBackgroundApi:
+    Description: "Endpoint URL for LoadNpcBackground function"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/load_npc_background/?secret=${SecretHash}&sheet_id=1VdQsc9qslvd-gGhydN5dEZEX6Q5uliBQqRguJyHBZM4"  
   AccountTable:
     Description: "Name of the AccountTable"
     Value: !Ref AccountTable
@@ -189,6 +405,33 @@ Outputs:
   SessionTable:
     Description: "Name of the SessionTable"
     Value: !Ref SessionTable
+  ApiKeyTable:
+    Description: "Name of the ApiKeyTable"
+    Value: !Ref ApiKeyTable
   TestResultBucket:
     Description: "Name of the TestResultBucket"
     Value: !Ref TestResultBucket
+  SecretHash:
+    Description: "Secret hash for secure operations"
+    Value: !Ref SecretHash
+  ApiGateWayName:
+    Description: "API Gateway name"
+    Value: !Sub "${AWS::StackName}-api"
+  StageName:
+    Description: "Stage name for the API"
+    Value: !Ref StageName
+  UsagePlanName:
+    Description: "Usage plan name"
+    Value: !Sub "${AWS::StackName}-usage-plan"
+  TestRecordTable:
+    Description: "Name of the TestRecordTable"
+    Value: !Ref TestRecordTable
+  NpcTaskTable:
+    Description: "Name of the NpcTaskTable"
+    Value: !Ref NpcTaskTable
+  NpcLockTable:
+    Description: "Name of the NpcLockTable"
+    Value: !Ref NpcLockTable
+  NpcBackgroundTable:
+    Description: "Name of the NpcBackgroundTable"
+    Value: !Ref NpcBackgroundTable

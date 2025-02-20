@@ -5,6 +5,5 @@ SSH_HOST=$(aws cloudformation describe-stacks --stack-name minikube-stack --quer
 SSH_KEY="labsuser.pem"
 SSH_USER="ec2-user"
 
-ssh -o "StrictHostKeyChecking no" -i $SSH_KEY $SSH_USER@$SSH_HOST "minikube status"
-
+ssh -o "StrictHostKeyChecking no" -i $SSH_KEY $SSH_USER@$SSH_HOST "minikube dashboard --url"
 
