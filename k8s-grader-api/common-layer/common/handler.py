@@ -1,7 +1,7 @@
 import json
 import os
 
-from common.pytest import GamePhrase, TestResult
+from common.status import GamePhrase, TestResult
 from cryptography.fernet import Fernet
 
 SECRET_HASH = os.getenv("SecretHash")
@@ -68,8 +68,9 @@ def test_result_response(
     game_phrase: GamePhrase,
     next_game_phrase: GamePhrase,
     test_result: TestResult,
-    instruction,
-    report_url,
+    instruction: str,
+    report_url: str,
+    easter_egg_url: str,
 ):
     return {
         "headers": {
@@ -86,6 +87,7 @@ def test_result_response(
                 "status": test_result.name,
                 "message": instruction,
                 "report_url": report_url,
+                "easter_egg_url": easter_egg_url if easter_egg_url else "",
             }
         ),
     }
@@ -112,11 +114,12 @@ def get_email_game_and_npc_from_event(event):
 
 def get_email_from_event(event):
     api_key = event["headers"].get("x-api-key")
-    if not api_key:
-        return None
-    return get_email_from_api_key(api_key)
+    return get_email_from_api_key(api_key) if api_key else None
 
 
 def get_email_from_api_key(api_key):
-    fernet = Fernet(SECRET_HASH)
-    return fernet.decrypt(api_key.encode()).decode()
+    try:
+        fernet = Fernet(SECRET_HASH)
+        return fernet.decrypt(api_key.encode()).decode()
+    except Exception as e:
+        raise ValueError(f"Invalid API key: {e}") from e

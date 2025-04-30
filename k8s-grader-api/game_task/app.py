@@ -25,8 +25,6 @@ from common.handler import (
     test_result_response,
 )
 from common.pytest import (
-    GamePhrase,
-    TestResult,
     get_ai_instruction,
     get_current_task,
     get_instruction,
@@ -35,6 +33,7 @@ from common.pytest import (
 )
 from common.s3 import generate_presigned_url, get_bucket_key, upload_test_result
 from common.session import generate_session
+from common.status import GamePhrase, TestResult
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -63,7 +62,7 @@ def lambda_handler(event, context):  # pylint: disable=W0613
             f"NPC {npc} or main character not found in the bachground database"
         )
 
-    if random.random() < 0.5:
+    if random.random() < 0.3:
         message = get_ai_random_chat(npc)
         if message is None:
             message = "..."
@@ -147,5 +146,6 @@ def lambda_handler(event, context):  # pylint: disable=W0613
             test_result,
             instruction,
             report_url,
+            None,
         )
     return error_response("Setup failed!")
